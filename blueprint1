@@ -1,0 +1,158 @@
+blueprint:
+  name: Philips Hue Dimmer (Zigbee2MQTT) → Lightstrip
+  description: |
+    Steuert einen Lightstrip mit Philips Hue Dimmer Switch (Z2M).
+    - On-Press: einschalten
+    - Off-Press: ausschalten
+    - Up-Press/Down-Press: in Schritten dimmen
+    - Up-Hold/Down-Hold: kontinuierlich dimmen bis Release
+    Unterstützt Z2M-Aktionsformate mit Bindestrich (z. B. "up-press") oder Unterstrich ("up_press").
+  domain: automation
+  source_url: ""
+  input:
+    action_sensor:
+      name: Action-Sensor des Dimmers
+      description: sensor.<dein_dimmschalter>_action (Zigbee2MQTT)
+      selector:
+        entity:
+          domain: sensor
+    target_light:
+      name: Lightstrip (oder Licht-Gruppe)
+      selector:
+        target:
+          entity:
+            domain: light
+    step_pct:
+      name: Schrittweite bei kurzem Druck (%)
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 50
+          unit_of_measurement: "%"
+          mode: slider
+    hold_step_pct:
+      name: Schrittweite pro Intervall bei Halten (%)
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 20
+          unit_of_measurement: "%"
+          mode: slider
+    hold_interval_ms:
+      name: Intervall beim Halten (ms)
+      description: Wie oft während des Haltens ein Schritt gesendet wird.
+      default: 250
+      selector:
+        number:
+          min: 100
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+    transition_seconds:
+      name: (Optional) Übergangszeit in Sekunden
+      description: Wird bei Helligkeitsänderungen verwendet; leer lassen für Z2M/Light-Standard.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 0.1
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  step_pct: !input step_pct
+  hold_step_pct: !input hold_step_pct
+  hold_interval_ms: !input hold_interval_ms
+  transition_seconds: !input transition_seconds
+
+trigger:
+  - platform: state
+    entity_id: !input action_sensor
+
+condition: []
+
+action:
+  - variables:
+      a: "{{ trigger.to_state.state }}"
+      # Normalisiere Aktionen: akzeptiere '-' und '_' Varianten
+      is_on_press: "{{ a in ['on-press','on_press'] }}"
+      is_off_press: "{{ a in ['off-press','off_press'] }}"
+      is_up_press: "{{ a in ['up-press','up_press'] }}"
+      is_down_press: "{{ a in ['down-press','down_press'] }}"
+      is_up_hold: "{{ a in ['up-hold','up_hold'] }}"
+      is_up_release: "{{ a in ['up-hold-release','up_hold_release','up-release','up_release'] }}"
+      is_down_hold: "{{ a in ['down-hold','down_hold'] }}"
+      is_down_release: "{{ a in ['down-hold-release','down_hold_release','down-release','down_release'] }}"
+
+  - choose:
+      # ---------------- On / Off ----------------
+      - conditions: "{{ is_on_press }}"
+        sequence:
+          - service: light.turn_on
+            target: !input target_light
+
+      - conditions: "{{ is_off_press }}"
+        sequence:
+          - service: light.turn_off
+            target: !input target_light
+
+      # ---------------- Press: Schrittweise dimmen ----------------
+      - conditions: "{{ is_up_press }}"
+        sequence:
+          - service: light.turn_on
+            target: !input target_light
+            data:
+              brightness_step_pct: "{{ step_pct | int }}"
+              {% if transition_seconds|int > 0 %}
+              transition: "{{ transition_seconds | float }}"
+              {% endif %}
+
+      - conditions: "{{ is_down_press }}"
+        sequence:
+          - service: light.turn_on
+            target: !input target_light
+            data:
+              brightness_step_pct: "{{ (0 - (step_pct | int)) }}"
+              {% if transition_seconds|int > 0 %}
+              transition: "{{ transition_seconds | float }}"
+              {% endif %}
+
+      # ---------------- Hold: kontinuierlich dimmen bis Release ----------------
+      - conditions: "{{ is_up_hold }}"
+        sequence:
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ not is_state(trigger.entity_id, 'up-hold-release') and not is_state(trigger.entity_id, 'up_hold_release') and not is_state(trigger.entity_id, 'up-release') and not is_state(trigger.entity_id, 'up_release') }}"
+              sequence:
+                - service: light.turn_on
+                  target: !input target_light
+                  data:
+                    brightness_step_pct: "{{ hold_step_pct | int }}"
+                    {% if transition_seconds|int > 0 %}
+                    transition: "{{ transition_seconds | float }}"
+                    {% endif %}
+                - delay:
+                    milliseconds: "{{ hold_interval_ms | int }}"
+
+      - conditions: "{{ is_down_hold }}"
+        sequence:
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ not is_state(trigger.entity_id, 'down-hold-release') and not is_state(trigger.entity_id, 'down_hold_release') and not is_state(trigger.entity_id, 'down-release') and not is_state(trigger.entity_id, 'down_release') }}"
+              sequence:
+                - service: light.turn_on
+                  target: !input target_light
+                  data:
+                    brightness_step_pct: "{{ 0 - (hold_step_pct | int) }}"
+                    {% if transition_seconds|int > 0 %}
+                    transition: "{{ transition_seconds | float }}"
+                    {% endif %}
+                - delay:
+                    milliseconds: "{{ hold_interval_ms | int }}"
+    default: []

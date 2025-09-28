@@ -8,7 +8,6 @@ blueprint:
     - Up-Hold/Down-Hold: kontinuierlich dimmen bis Release
     Unterstützt Z2M-Aktionsformate mit Bindestrich (z. B. "up-press") oder Unterstrich ("up_press").
   domain: automation
-  source_url: ""
   input:
     action_sensor:
       name: Action-Sensor des Dimmers
@@ -51,8 +50,8 @@ blueprint:
           step: 50
           unit_of_measurement: "ms"
     transition_seconds:
-      name: (Optional) Übergangszeit in Sekunden
-      description: Wird bei Helligkeitsänderungen verwendet; leer lassen für Z2M/Light-Standard.
+      name: Übergangszeit in Sekunden
+      description: Wird bei Helligkeitsänderungen verwendet (0 = keine).
       default: 0
       selector:
         number:
@@ -73,8 +72,6 @@ trigger:
   - platform: state
     entity_id: !input action_sensor
 
-condition: []
-
 action:
   - variables:
       a: "{{ trigger.to_state.state }}"
@@ -85,74 +82,4 @@ action:
       is_down_press: "{{ a in ['down-press','down_press'] }}"
       is_up_hold: "{{ a in ['up-hold','up_hold'] }}"
       is_up_release: "{{ a in ['up-hold-release','up_hold_release','up-release','up_release'] }}"
-      is_down_hold: "{{ a in ['down-hold','down_hold'] }}"
-      is_down_release: "{{ a in ['down-hold-release','down_hold_release','down-release','down_release'] }}"
-
-  - choose:
-      # ---------------- On / Off ----------------
-      - conditions: "{{ is_on_press }}"
-        sequence:
-          - service: light.turn_on
-            target: !input target_light
-
-      - conditions: "{{ is_off_press }}"
-        sequence:
-          - service: light.turn_off
-            target: !input target_light
-
-      # ---------------- Press: Schrittweise dimmen ----------------
-      - conditions: "{{ is_up_press }}"
-        sequence:
-          - service: light.turn_on
-            target: !input target_light
-            data:
-              brightness_step_pct: "{{ step_pct | int }}"
-              {% if transition_seconds|int > 0 %}
-              transition: "{{ transition_seconds | float }}"
-              {% endif %}
-
-      - conditions: "{{ is_down_press }}"
-        sequence:
-          - service: light.turn_on
-            target: !input target_light
-            data:
-              brightness_step_pct: "{{ (0 - (step_pct | int)) }}"
-              {% if transition_seconds|int > 0 %}
-              transition: "{{ transition_seconds | float }}"
-              {% endif %}
-
-      # ---------------- Hold: kontinuierlich dimmen bis Release ----------------
-      - conditions: "{{ is_up_hold }}"
-        sequence:
-          - repeat:
-              while:
-                - condition: template
-                  value_template: "{{ not is_state(trigger.entity_id, 'up-hold-release') and not is_state(trigger.entity_id, 'up_hold_release') and not is_state(trigger.entity_id, 'up-release') and not is_state(trigger.entity_id, 'up_release') }}"
-              sequence:
-                - service: light.turn_on
-                  target: !input target_light
-                  data:
-                    brightness_step_pct: "{{ hold_step_pct | int }}"
-                    {% if transition_seconds|int > 0 %}
-                    transition: "{{ transition_seconds | float }}"
-                    {% endif %}
-                - delay:
-                    milliseconds: "{{ hold_interval_ms | int }}"
-
-      - conditions: "{{ is_down_hold }}"
-        sequence:
-          - repeat:
-              while:
-                - condition: template
-                  value_template: "{{ not is_state(trigger.entity_id, 'down-hold-release') and not is_state(trigger.entity_id, 'down_hold_release') and not is_state(trigger.entity_id, 'down-release') and not is_state(trigger.entity_id, 'down_release') }}"
-              sequence:
-                - service: light.turn_on
-                  target: !input target_light
-                  data:
-                    brightness_step_pct: "{{ 0 - (hold_step_pct | int) }}"
-                    {% if transition_seconds|int > 0 %}
-                    transition: "{{ transition_seconds | float }}"
-                    {% endif %}
-                - delay:
-                    milliseconds: "{{ hold_interval_ms | int }}"
-    default: []
+      is_down_hold: "{{ a in ['down]()
